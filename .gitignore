@@ -43,3 +43,6 @@ yarn-error.*
 # local secrets
 .env
 .env.local
+
+# Claude Code local overrides
+.claude/settings.local.json
