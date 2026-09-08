@@ -71,7 +71,11 @@ A user belongs to exactly one group in v1.
 
 Use Row Level Security so users can only read rows where `group_id` matches their
 own group. Admin-only writes (approving requests, granting stars, transferring
-admin) go through Edge Functions, not direct table writes.
+admin) and star transfers never happen as direct table writes: they go through
+`security definer` Postgres functions called via RPC (see
+`supabase/migrations/`), which check `auth.uid()` themselves and run in one
+transaction. Edge Functions are reserved for work that needs the outside world
+(sending notifications, fetching Qgenda feeds).
 
 ## Star rules
 
@@ -100,6 +104,13 @@ Phone login, SMS, in-app purchases, Qgenda API sync, multi-group membership, cha
 
 ## Current state
 
-Scaffold only. Screens live in `app/` and render placeholder data from
-`lib/placeholder.ts`; delete that file as each screen starts reading from
-Supabase. Nothing is wired to a backend yet.
+Auth, groups, join approval, swap requests (post / accept / cancel), star
+grants and transfers, leaderboard and notification prefs all run against
+Supabase. Setup steps are in `README.md`. Not built yet: sending
+notifications (push/email) and the Qgenda ICS import.
+
+Layout: `lib/supabase.ts` (client), `lib/auth.tsx` (session + profile
+provider, Google sign-in), `lib/types.ts` (row types, keep in sync with the
+migration), `app/_layout.tsx` (auth gate via `Stack.Protected`),
+`app/onboarding.tsx` (create / find group), `components/DaySheet.tsx`
+(request actions).

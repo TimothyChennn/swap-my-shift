@@ -1,73 +1,118 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useMemo, useState } from "react";
-import { Modal, Pressable, ScrollView, Text, View } from "react-native";
+import { useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 
-import { SwapRequest, swapRequests } from "../../lib/placeholder";
+import { DaySheet, type OpenRequest } from "../../components/DaySheet";
+import { SectionTitle } from "../../components/ui";
+import { useAuth } from "../../lib/auth";
+import { formatDateKey, monthCells, toDateKey } from "../../lib/dates";
+import { supabase } from "../../lib/supabase";
 
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
 
-/**
- * Home. Month calendar on top, list of open requests below.
- * Tapping a day opens the day sheet. All data is placeholder for now.
- */
+/** Home: month calendar with +/− badges, open requests below, day sheet on tap. */
 export default function HomeScreen() {
-  const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const { session, profile } = useAuth();
+  const myId = session!.user.id;
+  const groupId = profile!.group_id!;
 
-  const today = useMemo(() => new Date(), []);
-  const monthLabel = today.toLocaleDateString(undefined, {
-    month: "long",
-    year: "numeric",
-  });
+  const [requests, setRequests] = useState<OpenRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [monthOffset, setMonthOffset] = useState(0);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
-  const firstWeekday = new Date(
-    today.getFullYear(),
-    today.getMonth(),
-    1
-  ).getDay();
-  const daysInMonth = new Date(
-    today.getFullYear(),
-    today.getMonth() + 1,
-    0
-  ).getDate();
+  const load = useCallback(async () => {
+    const { data } = await supabase
+      .from("swap_requests")
+      .select("*, requester:profiles!swap_requests_user_id_fkey(display_name)")
+      .eq("status", "open")
+      .order("date")
+      .order("created_at");
+    setRequests((data as OpenRequest[]) ?? []);
+    setLoading(false);
+  }, []);
 
-  // Leading blanks so the 1st lands on the right weekday.
-  const cells: (number | null)[] = [
-    ...Array<null>(firstWeekday).fill(null),
-    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
-  ];
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
 
-  const requestsForDay = (day: number) =>
-    swapRequests.filter((r) => r.day === day);
+  // Refresh when anyone in the group posts, accepts, or cancels.
+  useEffect(() => {
+    const channel = supabase
+      .channel(`swap_requests:${groupId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "swap_requests",
+          filter: `group_id=eq.${groupId}`,
+        },
+        () => load()
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [groupId, load]);
+
+  const today = toDateKey(new Date());
+  const shown = useMemo(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth() + monthOffset, 1);
+  }, [monthOffset]);
+  const cells = monthCells(shown.getFullYear(), shown.getMonth());
+  const monthLabel = shown.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+
+  const byDate = useMemo(() => {
+    const map = new Map<string, OpenRequest[]>();
+    for (const r of requests) {
+      map.set(r.date, [...(map.get(r.date) ?? []), r]);
+    }
+    return map;
+  }, [requests]);
+
+  const upcoming = requests.filter((r) => r.date >= today);
 
   return (
     <>
-      <ScrollView className="flex-1 bg-slate-50">
+      <ScrollView
+        className="flex-1 bg-slate-50"
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
+      >
         <View className="m-4 rounded-2xl bg-white p-4">
-          <Text className="mb-3 text-lg font-semibold text-slate-900">
-            {monthLabel}
-          </Text>
+          <View className="mb-3 flex-row items-center justify-between">
+            <Pressable onPress={() => setMonthOffset((o) => o - 1)} hitSlop={12}>
+              <Ionicons name="chevron-back" size={22} color="#475569" />
+            </Pressable>
+            <Text className="text-lg font-semibold text-slate-900">{monthLabel}</Text>
+            <Pressable onPress={() => setMonthOffset((o) => o + 1)} hitSlop={12}>
+              <Ionicons name="chevron-forward" size={22} color="#475569" />
+            </Pressable>
+          </View>
 
           <View className="flex-row">
             {WEEKDAYS.map((label, i) => (
               <View key={i} className="flex-1 items-center py-1">
-                <Text className="text-xs font-medium text-slate-400">
-                  {label}
-                </Text>
+                <Text className="text-xs font-medium text-slate-400">{label}</Text>
               </View>
             ))}
           </View>
 
           <View className="flex-row flex-wrap">
-            {cells.map((day, i) => {
-              if (day === null) {
+            {cells.map((key, i) => {
+              if (key === null) {
                 return <View key={`blank-${i}`} className="h-12 w-[14.28%]" />;
               }
-              const dayRequests = requestsForDay(day);
-              const isToday = day === today.getDate();
+              const dayRequests = byDate.get(key) ?? [];
+              const isToday = key === today;
               return (
                 <Pressable
-                  key={day}
-                  onPress={() => setSelectedDay(day)}
+                  key={key}
+                  onPress={() => setSelectedDate(key)}
                   className="h-12 w-[14.28%] items-center justify-center"
                 >
                   <View
@@ -77,21 +122,15 @@ export default function HomeScreen() {
                   >
                     <Text
                       className={
-                        isToday
-                          ? "text-sm font-semibold text-white"
-                          : "text-sm text-slate-900"
+                        isToday ? "text-sm font-semibold text-white" : "text-sm text-slate-900"
                       }
                     >
-                      {day}
+                      {Number(key.slice(-2))}
                     </Text>
                   </View>
                   <View className="mt-0.5 h-3 flex-row gap-0.5">
-                    {dayRequests.some((r) => r.kind === "pickup") && (
-                      <Badge kind="pickup" />
-                    )}
-                    {dayRequests.some((r) => r.kind === "drop") && (
-                      <Badge kind="drop" />
-                    )}
+                    {dayRequests.some((r) => r.kind === "pickup") && <Badge kind="pickup" />}
+                    {dayRequests.some((r) => r.kind === "drop") && <Badge kind="drop" />}
                   </View>
                 </Pressable>
               );
@@ -100,41 +139,48 @@ export default function HomeScreen() {
         </View>
 
         <View className="px-4 pb-8">
-          <Text className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
-            Open requests
-          </Text>
-          {swapRequests.map((request) => (
+          <SectionTitle>Open requests</SectionTitle>
+          {!loading && upcoming.length === 0 ? (
+            <Text className="text-slate-500">
+              Nothing open right now. Tap a day to post one.
+            </Text>
+          ) : null}
+          {upcoming.map((request) => (
             <RequestRow
               key={request.id}
               request={request}
-              onPress={() => setSelectedDay(request.day)}
+              mine={request.user_id === myId}
+              onPress={() => setSelectedDate(request.date)}
             />
           ))}
         </View>
       </ScrollView>
 
       <DaySheet
-        day={selectedDay}
-        requests={selectedDay === null ? [] : requestsForDay(selectedDay)}
-        onClose={() => setSelectedDay(null)}
+        date={selectedDate}
+        requests={selectedDate ? byDate.get(selectedDate) ?? [] : []}
+        myId={myId}
+        onClose={() => setSelectedDate(null)}
+        onChanged={load}
       />
     </>
   );
 }
 
 function Badge({ kind }: { kind: "pickup" | "drop" }) {
+  const pickup = kind === "pickup";
   return (
     <View
       className={`h-3 w-3 items-center justify-center rounded-full ${
-        kind === "pickup" ? "bg-emerald-100" : "bg-amber-100"
+        pickup ? "bg-emerald-100" : "bg-amber-100"
       }`}
     >
       <Text
         className={`text-[9px] font-bold leading-none ${
-          kind === "pickup" ? "text-emerald-700" : "text-amber-700"
+          pickup ? "text-emerald-700" : "text-amber-700"
         }`}
       >
-        {kind === "pickup" ? "+" : "−"}
+        {pickup ? "+" : "−"}
       </Text>
     </View>
   );
@@ -142,12 +188,15 @@ function Badge({ kind }: { kind: "pickup" | "drop" }) {
 
 function RequestRow({
   request,
+  mine,
   onPress,
 }: {
-  request: SwapRequest;
+  request: OpenRequest;
+  mine: boolean;
   onPress: () => void;
 }) {
-  const isPickup = request.kind === "pickup";
+  const pickup = request.kind === "pickup";
+  const name = mine ? "You" : request.requester?.display_name ?? "Someone";
   return (
     <Pressable
       onPress={onPress}
@@ -155,92 +204,28 @@ function RequestRow({
     >
       <View
         className={`h-10 w-10 items-center justify-center rounded-full ${
-          isPickup ? "bg-emerald-50" : "bg-amber-50"
+          pickup ? "bg-emerald-50" : "bg-amber-50"
         }`}
       >
         <Ionicons
-          name={isPickup ? "add" : "remove"}
+          name={pickup ? "add" : "remove"}
           size={20}
-          color={isPickup ? "#047857" : "#b45309"}
+          color={pickup ? "#047857" : "#b45309"}
         />
       </View>
       <View className="flex-1">
         <Text className="text-base font-medium text-slate-900">
-          {request.userName} · {request.shiftType}
+          {name} · {request.shift_type || (pickup ? "pick up" : "drop")}
         </Text>
         <Text className="text-sm text-slate-500">
-          Day {request.day} · {request.time}
+          {formatDateKey(request.date)}
+          {request.shift_time ? ` · ${request.shift_time}` : ""}
         </Text>
       </View>
       <View className="flex-row items-center gap-1">
         <Ionicons name="star" size={14} color="#f59e0b" />
-        <Text className="text-sm font-semibold text-slate-900">
-          {request.stars}
-        </Text>
+        <Text className="text-sm font-semibold text-slate-900">{request.stars}</Text>
       </View>
     </Pressable>
-  );
-}
-
-function DaySheet({
-  day,
-  requests,
-  onClose,
-}: {
-  day: number | null;
-  requests: SwapRequest[];
-  onClose: () => void;
-}) {
-  return (
-    <Modal
-      visible={day !== null}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <Pressable className="flex-1 bg-black/40" onPress={onClose} />
-      <View className="rounded-t-3xl bg-white p-5 pb-10">
-        <View className="mb-4 flex-row items-center justify-between">
-          <Text className="text-lg font-semibold text-slate-900">
-            Day {day}
-          </Text>
-          <Pressable onPress={onClose} hitSlop={12}>
-            <Ionicons name="close" size={22} color="#64748b" />
-          </Pressable>
-        </View>
-
-        {requests.length === 0 ? (
-          <Text className="mb-4 text-slate-500">No open requests.</Text>
-        ) : (
-          requests.map((request) => (
-            <View
-              key={request.id}
-              className="mb-2 rounded-xl border border-slate-200 p-4"
-            >
-              <Text className="text-base font-medium text-slate-900">
-                {request.kind === "pickup" ? "Wants to pick up" : "Wants to drop"}
-                {" · "}
-                {request.shiftType}
-              </Text>
-              <Text className="text-sm text-slate-500">{request.time}</Text>
-              {request.notes ? (
-                <Text className="mt-1 text-sm text-slate-500">
-                  {request.notes}
-                </Text>
-              ) : null}
-              <Text className="mt-2 text-sm font-semibold text-slate-900">
-                {request.stars} stars · {request.userName}
-              </Text>
-            </View>
-          ))
-        )}
-
-        <Pressable className="mt-2 rounded-xl bg-indigo-600 px-4 py-4 active:bg-indigo-700">
-          <Text className="text-center text-base font-semibold text-white">
-            Post a request
-          </Text>
-        </Pressable>
-      </View>
-    </Modal>
   );
 }
