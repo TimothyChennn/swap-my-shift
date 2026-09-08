@@ -3,21 +3,24 @@ import { useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 
-import { DaySheet, type OpenRequest } from "../../components/DaySheet";
+import { DaySheet, type DayShift, type OpenRequest } from "../../components/DaySheet";
 import { SectionTitle } from "../../components/ui";
 import { useAuth } from "../../lib/auth";
 import { formatDateKey, monthCells, toDateKey } from "../../lib/dates";
-import { supabase } from "../../lib/supabase";
+import { supabase, syncShifts } from "../../lib/supabase";
+
+const SYNC_INTERVAL_MS = 60 * 60 * 1000;
 
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
 
 /** Home: month calendar with +/− badges, open requests below, day sheet on tap. */
 export default function HomeScreen() {
-  const { session, profile } = useAuth();
+  const { session, profile, refreshProfile } = useAuth();
   const myId = session!.user.id;
   const groupId = profile!.group_id!;
 
   const [requests, setRequests] = useState<OpenRequest[]>([]);
+  const [shifts, setShifts] = useState<DayShift[]>([]);
   const [loading, setLoading] = useState(true);
   const [monthOffset, setMonthOffset] = useState(0);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -33,10 +36,46 @@ export default function HomeScreen() {
     setLoading(false);
   }, []);
 
+  const today = toDateKey(new Date());
+  const shown = useMemo(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth() + monthOffset, 1);
+  }, [monthOffset]);
+
+  const loadShifts = useCallback(async () => {
+    const from = new Date(shown.getFullYear(), shown.getMonth(), -7);
+    const to = new Date(shown.getFullYear(), shown.getMonth() + 1, 7);
+    const { data } = await supabase
+      .from("shifts")
+      .select("id, user_id, starts_at, ends_at, shift_type, owner:profiles!shifts_user_id_fkey(display_name)")
+      .gte("starts_at", from.toISOString())
+      .lt("starts_at", to.toISOString())
+      .order("starts_at");
+    setShifts((data as unknown as DayShift[]) ?? []);
+  }, [shown]);
+
   useFocusEffect(
     useCallback(() => {
       load();
-    }, [load])
+      loadShifts();
+    }, [load, loadShifts])
+  );
+
+  // Pull the user's Qgenda feed if it hasn't been synced in the last hour.
+  useFocusEffect(
+    useCallback(() => {
+      if (!profile?.calendar_url) return;
+      const last = profile.calendar_synced_at ? Date.parse(profile.calendar_synced_at) : 0;
+      if (Date.now() - last < SYNC_INTERVAL_MS) return;
+      syncShifts()
+        .catch(() => {
+          // The failure reason is stored on the profile; Settings shows it.
+        })
+        .finally(() => {
+          refreshProfile();
+          loadShifts();
+        });
+    }, [profile?.calendar_url, profile?.calendar_synced_at, refreshProfile, loadShifts])
   );
 
   // Refresh when anyone in the group posts, accepts, or cancels.
@@ -59,11 +98,6 @@ export default function HomeScreen() {
     };
   }, [groupId, load]);
 
-  const today = toDateKey(new Date());
-  const shown = useMemo(() => {
-    const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth() + monthOffset, 1);
-  }, [monthOffset]);
   const cells = monthCells(shown.getFullYear(), shown.getMonth());
   const monthLabel = shown.toLocaleDateString(undefined, { month: "long", year: "numeric" });
 
@@ -74,6 +108,15 @@ export default function HomeScreen() {
     }
     return map;
   }, [requests]);
+
+  const shiftsByDate = useMemo(() => {
+    const map = new Map<string, DayShift[]>();
+    for (const shift of shifts) {
+      const key = toDateKey(new Date(shift.starts_at));
+      map.set(key, [...(map.get(key) ?? []), shift]);
+    }
+    return map;
+  }, [shifts]);
 
   const upcoming = requests.filter((r) => r.date >= today);
 
@@ -109,6 +152,7 @@ export default function HomeScreen() {
               }
               const dayRequests = byDate.get(key) ?? [];
               const isToday = key === today;
+              const working = (shiftsByDate.get(key) ?? []).some((s) => s.user_id === myId);
               return (
                 <Pressable
                   key={key}
@@ -117,12 +161,16 @@ export default function HomeScreen() {
                 >
                   <View
                     className={`h-8 w-8 items-center justify-center rounded-full ${
-                      isToday ? "bg-indigo-600" : ""
+                      isToday ? "bg-indigo-600" : working ? "bg-indigo-50" : ""
                     }`}
                   >
                     <Text
                       className={
-                        isToday ? "text-sm font-semibold text-white" : "text-sm text-slate-900"
+                        isToday
+                          ? "text-sm font-semibold text-white"
+                          : working
+                            ? "text-sm font-semibold text-indigo-700"
+                            : "text-sm text-slate-900"
                       }
                     >
                       {Number(key.slice(-2))}
@@ -159,6 +207,7 @@ export default function HomeScreen() {
       <DaySheet
         date={selectedDate}
         requests={selectedDate ? byDate.get(selectedDate) ?? [] : []}
+        shifts={selectedDate ? shiftsByDate.get(selectedDate) ?? [] : []}
         myId={myId}
         onClose={() => setSelectedDate(null)}
         onChanged={load}

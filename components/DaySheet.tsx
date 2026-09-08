@@ -11,18 +11,23 @@ import {
   View,
 } from "react-native";
 
-import { formatDateKey } from "../lib/dates";
+import { formatDateKey, formatTimeRange } from "../lib/dates";
 import { errorMessage, supabase } from "../lib/supabase";
-import type { SwapKind, SwapRequest } from "../lib/types";
+import type { Shift, SwapKind, SwapRequest } from "../lib/types";
 import { Button, Input } from "./ui";
 
 export type OpenRequest = SwapRequest & {
   requester: { display_name: string } | null;
 };
 
+export type DayShift = Pick<Shift, "id" | "user_id" | "starts_at" | "ends_at" | "shift_type"> & {
+  owner: { display_name: string } | null;
+};
+
 type Props = {
   date: string | null;
   requests: OpenRequest[];
+  shifts: DayShift[];
   myId: string;
   onClose: () => void;
   /** Called after any successful write so the parent can refetch. */
@@ -33,7 +38,7 @@ type Props = {
  * Bottom sheet for one day: its open requests (accept / cancel) and a form
  * to post a new one.
  */
-export function DaySheet({ date, requests, myId, onClose, onChanged }: Props) {
+export function DaySheet({ date, requests, shifts, myId, onClose, onChanged }: Props) {
   const [posting, setPosting] = useState(false);
 
   function close() {
@@ -70,6 +75,7 @@ export function DaySheet({ date, requests, myId, onClose, onChanged }: Props) {
             {posting && date ? (
               <PostRequestForm
                 date={date}
+                myShifts={shifts.filter((s) => s.user_id === myId)}
                 onCancel={() => setPosting(false)}
                 onPosted={() => {
                   setPosting(false);
@@ -78,6 +84,22 @@ export function DaySheet({ date, requests, myId, onClose, onChanged }: Props) {
               />
             ) : (
               <>
+                {shifts.length > 0 ? (
+                  <View className="rounded-xl bg-slate-50 p-4">
+                    <Text className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      On shift
+                    </Text>
+                    {shifts.map((shift) => (
+                      <Text key={shift.id} className="py-0.5 text-sm text-slate-700">
+                        <Text className="font-medium text-slate-900">
+                          {shift.user_id === myId ? "You" : shift.owner?.display_name ?? "Someone"}
+                        </Text>
+                        {" · "}
+                        {shift.shift_type || "Shift"} · {formatTimeRange(shift.starts_at, shift.ends_at)}
+                      </Text>
+                    ))}
+                  </View>
+                ) : null}
                 {requests.length === 0 ? (
                   <Text className="text-slate-500">No open requests for this day.</Text>
                 ) : (
@@ -207,16 +229,28 @@ function RequestCard({
 
 function PostRequestForm({
   date,
+  myShifts,
   onCancel,
   onPosted,
 }: {
   date: string;
+  myShifts: DayShift[];
   onCancel: () => void;
   onPosted: () => void;
 }) {
+  const first = myShifts[0];
   const [kind, setKind] = useState<SwapKind>("drop");
-  const [shiftType, setShiftType] = useState("");
-  const [shiftTime, setShiftTime] = useState("");
+  const [shiftId, setShiftId] = useState<string | null>(first?.id ?? null);
+  const [shiftType, setShiftType] = useState(first?.shift_type ?? "");
+  const [shiftTime, setShiftTime] = useState(
+    first ? formatTimeRange(first.starts_at, first.ends_at) : ""
+  );
+
+  function chooseShift(shift: DayShift | null) {
+    setShiftId(shift?.id ?? null);
+    setShiftType(shift?.shift_type ?? "");
+    setShiftTime(shift ? formatTimeRange(shift.starts_at, shift.ends_at) : "");
+  }
   const [notes, setNotes] = useState("");
   const [stars, setStars] = useState("1");
   const [busy, setBusy] = useState(false);
@@ -235,6 +269,7 @@ function PostRequestForm({
       p_shift_time: shiftTime,
       p_notes: notes,
       p_stars: starCount,
+      p_shift_id: kind === "drop" ? shiftId : null,
     });
     setBusy(false);
     if (error) {
@@ -263,6 +298,22 @@ function PostRequestForm({
           ? "You have a shift you want someone else to cover. Whoever takes it gets the stars."
           : "You want an extra shift. Whoever gives you theirs gets the stars."}
       </Text>
+
+      {kind === "drop" && myShifts.length > 0 ? (
+        <Field label="Which shift?">
+          <View className="flex-row flex-wrap gap-2">
+            {myShifts.map((shift) => (
+              <Chip
+                key={shift.id}
+                label={`${shift.shift_type || "Shift"} · ${formatTimeRange(shift.starts_at, shift.ends_at)}`}
+                selected={shiftId === shift.id}
+                onPress={() => chooseShift(shift)}
+              />
+            ))}
+            <Chip label="Other" selected={shiftId === null} onPress={() => chooseShift(null)} />
+          </View>
+        </Field>
+      ) : null}
 
       <Field label="Shift type">
         <Input value={shiftType} onChangeText={setShiftType} placeholder="Day, Night, Swing…" />
@@ -303,6 +354,29 @@ function KindTab({
       className={`flex-1 items-center py-2.5 ${selected ? "bg-indigo-600" : "bg-white"}`}
     >
       <Text className={`text-sm font-semibold ${selected ? "text-white" : "text-slate-700"}`}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function Chip({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      className={`rounded-full border px-3 py-1.5 ${
+        selected ? "border-indigo-600 bg-indigo-50" : "border-slate-200 bg-white"
+      }`}
+    >
+      <Text className={`text-sm ${selected ? "font-semibold text-indigo-700" : "text-slate-700"}`}>
         {label}
       </Text>
     </Pressable>

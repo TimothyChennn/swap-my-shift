@@ -15,6 +15,19 @@ export type Profile = {
   group_id: string | null;
   role: Role | null;
   calendar_url: string | null;
+  calendar_synced_at: string | null;
+  calendar_error: string | null;
+};
+
+export type Shift = {
+  id: string;
+  group_id: string;
+  user_id: string;
+  starts_at: string;
+  ends_at: string;
+  shift_type: string;
+  source: "import" | "manual";
+  external_id: string | null;
 };
 
 export type Group = {

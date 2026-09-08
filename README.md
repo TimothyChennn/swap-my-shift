@@ -47,7 +47,42 @@ The app opens Google in the system browser and comes back through
 `Linking.createURL("auth/callback")`, so the redirect URL changes with your
 machine's IP in Expo Go — the wildcard above covers that.
 
-### 3. Realtime
+### 3. Qgenda shift import (Edge Function)
+
+The `import-shifts` function fetches each user's Qgenda ICS feed. Deploying
+it uses the Supabase CLI (no install needed, `npx` fetches it):
+
+```bash
+npx supabase login                                  # opens a browser, once
+npx supabase link --project-ref tdctzjjjxojgoavybmtn
+npx supabase functions deploy import-shifts
+```
+
+The app syncs the signed-in user's feed when Home opens (at most hourly)
+and from Settings → **Sync now**. To also refresh everyone in the
+background, schedule the function from SQL Editor (fill in your service
+role key from Project Settings → API; it lives in Vault, not in the job):
+
+```sql
+create extension if not exists pg_cron;
+create extension if not exists pg_net;
+select vault.create_secret('<service-role-key>', 'service_role_key');
+
+select cron.schedule('import-shifts', '0 */6 * * *', $$
+  select net.http_post(
+    url := 'https://tdctzjjjxojgoavybmtn.supabase.co/functions/v1/import-shifts',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer ' || (
+        select decrypted_secret from vault.decrypted_secrets where name = 'service_role_key'
+      )
+    ),
+    body := '{}'::jsonb
+  );
+$$);
+```
+
+### 4. Realtime
 
 Database → Publications → `supabase_realtime` should list `swap_requests`,
 `join_requests` and `profiles` (the migration adds them). If it doesn't,
@@ -56,4 +91,3 @@ toggle them on there.
 ## Not wired yet
 
 - Push / email notifications (prefs are stored; nothing sends yet).
-- Qgenda ICS import (the URL is saved on the profile; no fetcher yet).

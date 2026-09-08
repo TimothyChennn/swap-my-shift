@@ -38,3 +38,23 @@ export function errorMessage(error: unknown): string {
   }
   return String(error);
 }
+
+/**
+ * Imports the current user's shifts from their saved Qgenda link.
+ * Resolves with the number imported; throws with a readable message.
+ */
+export async function syncShifts(): Promise<number> {
+  const { data, error } = await supabase.functions.invoke<{
+    results?: { imported?: number; error?: string }[];
+    error?: string;
+  }>("import-shifts");
+  if (error) {
+    // The function body carries the real reason on 4xx responses.
+    const body = await (error as { context?: Response }).context?.json().catch(() => null);
+    throw new Error(body?.error ?? errorMessage(error));
+  }
+  const result = data?.results?.[0];
+  if (!result) throw new Error(data?.error ?? "Sync failed");
+  if (result.error) throw new Error(result.error);
+  return result.imported ?? 0;
+}

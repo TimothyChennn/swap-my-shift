@@ -6,7 +6,7 @@ import { Alert, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import { type Member, MemberPicker } from "../../components/MemberPicker";
 import { Button, Card, Empty, Input, SectionTitle } from "../../components/ui";
 import { useAuth } from "../../lib/auth";
-import { errorMessage, supabase } from "../../lib/supabase";
+import { errorMessage, supabase, syncShifts } from "../../lib/supabase";
 import type { NotificationPrefs } from "../../lib/types";
 
 type PendingRequest = {
@@ -25,6 +25,7 @@ export default function SettingsScreen() {
   const [minStars, setMinStars] = useState("0");
   const [calendarUrl, setCalendarUrl] = useState(profile?.calendar_url ?? "");
   const [savingUrl, setSavingUrl] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [groupName, setGroupName] = useState("");
   const [memberCount, setMemberCount] = useState(0);
 
@@ -115,7 +116,20 @@ export default function SettingsScreen() {
       return;
     }
     await refreshProfile();
-    Alert.alert("Saved", "Shift import from Qgenda is coming soon.");
+    if (calendarUrl.trim()) await runSync();
+  }
+
+  async function runSync() {
+    setSyncing(true);
+    try {
+      const count = await syncShifts();
+      Alert.alert("Synced", `Imported ${count} ${count === 1 ? "shift" : "shifts"} from Qgenda.`);
+    } catch (error) {
+      Alert.alert("Couldn't sync", errorMessage(error));
+    } finally {
+      setSyncing(false);
+      await refreshProfile();
+    }
   }
 
   return (
@@ -173,6 +187,23 @@ export default function SettingsScreen() {
             disabled={(calendarUrl.trim() || null) === (profile?.calendar_url ?? null)}
           />
         </View>
+        {profile?.calendar_url ? (
+          <View className="gap-2 p-4">
+            <Text className="text-sm text-slate-500">
+              {profile.calendar_error
+                ? `Last sync failed: ${profile.calendar_error}`
+                : profile.calendar_synced_at
+                  ? `Last synced ${new Date(profile.calendar_synced_at).toLocaleString(undefined, {
+                      month: "short",
+                      day: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}. Syncs again automatically when you open the app.`
+                  : "Not synced yet."}
+            </Text>
+            <Button title="Sync now" onPress={runSync} loading={syncing} />
+          </View>
+        ) : null}
       </Card>
 
       {isAdmin ? <AdminSection myId={myId} groupId={groupId} /> : null}

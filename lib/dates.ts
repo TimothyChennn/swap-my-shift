@@ -42,3 +42,14 @@ export function monthCells(year: number, month: number): (string | null)[] {
     ),
   ];
 }
+
+/** "7:00 AM – 7:00 PM", or "All day" for a midnight-to-midnight event. */
+export function formatTimeRange(startsAt: string, endsAt: string): string {
+  const start = new Date(startsAt);
+  const end = new Date(endsAt);
+  const isAllDay =
+    end.getTime() - start.getTime() === 24 * 3600 * 1000 && start.getUTCHours() === 0;
+  if (isAllDay) return "All day";
+  const fmt: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit" };
+  return `${start.toLocaleTimeString(undefined, fmt)} – ${end.toLocaleTimeString(undefined, fmt)}`;
+}

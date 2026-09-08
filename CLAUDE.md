@@ -106,8 +106,10 @@ Phone login, SMS, in-app purchases, Qgenda API sync, multi-group membership, cha
 
 Auth, groups, join approval, swap requests (post / accept / cancel), star
 grants and transfers, leaderboard and notification prefs all run against
-Supabase. Setup steps are in `README.md`. Not built yet: sending
-notifications (push/email) and the Qgenda ICS import.
+Supabase. Setup steps are in `README.md`. Qgenda import runs in the
+`import-shifts` Edge Function (`supabase/functions/`), called by the app
+for the current user and optionally by pg_cron for everyone. Not built
+yet: sending notifications (push/email).
 
 Layout: `lib/supabase.ts` (client), `lib/auth.tsx` (session + profile
 provider, Google sign-in), `lib/types.ts` (row types, keep in sync with the
