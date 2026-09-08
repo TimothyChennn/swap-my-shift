@@ -80,8 +80,9 @@ transaction. Edge Functions are reserved for work that needs the outside world
 ## Star rules
 
 - New admin gets 10 stars when they create a group.
-- Accepting a swap request moves the offered stars from the requester to the
-  acceptor in one transaction.
+- Only drop requests carry stars. Accepting a drop moves the offered stars from
+  the person dropping to the person covering, in one transaction. Pickup
+  requests are free: giving someone your shift earns nothing.
 - Stars are a number in the app. Do not show a dollar value anywhere in the UI.
 
 ## Notifications

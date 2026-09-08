@@ -139,8 +139,8 @@ function RequestCard({
     Alert.alert(
       isDrop ? "Cover this shift?" : "Give up your shift?",
       isDrop
-        ? `You'll work ${name === "You" ? "your" : `${name}'s`} ${request.shift_type} shift and receive ${request.stars} stars.`
-        : `${name} will take your ${request.shift_type} shift and you'll receive ${request.stars} stars.`,
+        ? `You'll work ${name}'s ${request.shift_type || ""} shift and receive ${request.stars} ${request.stars === 1 ? "star" : "stars"}.`
+        : `${name} will take your ${request.shift_type || ""} shift that day.`,
       [
         { text: "Not now", style: "cancel" },
         {
@@ -201,10 +201,12 @@ function RequestCard({
         <Text className="flex-1 text-base font-medium text-slate-900">
           {name} {isDrop ? "wants to drop" : "wants to pick up"} a {request.shift_type || "shift"}
         </Text>
-        <View className="flex-row items-center gap-1">
-          <Ionicons name="star" size={14} color="#f59e0b" />
-          <Text className="text-sm font-semibold text-slate-900">{request.stars}</Text>
-        </View>
+        {isDrop ? (
+          <View className="flex-row items-center gap-1">
+            <Ionicons name="star" size={14} color="#f59e0b" />
+            <Text className="text-sm font-semibold text-slate-900">{request.stars}</Text>
+          </View>
+        ) : null}
       </View>
       {request.shift_time ? (
         <Text className="mt-2 text-sm text-slate-500">{request.shift_time}</Text>
@@ -256,7 +258,7 @@ function PostRequestForm({
   const [busy, setBusy] = useState(false);
 
   async function submit() {
-    const starCount = Number.parseInt(stars, 10);
+    const starCount = kind === "pickup" ? 0 : Number.parseInt(stars, 10);
     if (Number.isNaN(starCount) || starCount < 0) {
       Alert.alert("Stars must be a whole number");
       return;
@@ -295,8 +297,8 @@ function PostRequestForm({
       </View>
       <Text className="text-sm text-slate-500">
         {kind === "drop"
-          ? "You have a shift you want someone else to cover. Whoever takes it gets the stars."
-          : "You want an extra shift. Whoever gives you theirs gets the stars."}
+          ? "You have a shift you want covered. Whoever takes it gets the stars you offer."
+          : "You want an extra shift. No stars change hands; whoever hands theirs over just does."}
       </Text>
 
       {kind === "drop" && myShifts.length > 0 ? (
@@ -321,9 +323,11 @@ function PostRequestForm({
       <Field label="Time">
         <Input value={shiftTime} onChangeText={setShiftTime} placeholder="7:00 AM – 7:00 PM" />
       </Field>
-      <Field label="Stars offered">
-        <Input value={stars} onChangeText={setStars} keyboardType="number-pad" />
-      </Field>
+      {kind === "drop" ? (
+        <Field label="Stars offered">
+          <Input value={stars} onChangeText={setStars} keyboardType="number-pad" />
+        </Field>
+      ) : null}
       <Field label="Notes">
         <Input
           value={notes}

@@ -271,10 +271,12 @@ function RequestRow({
           {request.shift_time ? ` · ${request.shift_time}` : ""}
         </Text>
       </View>
-      <View className="flex-row items-center gap-1">
-        <Ionicons name="star" size={14} color="#f59e0b" />
-        <Text className="text-sm font-semibold text-slate-900">{request.stars}</Text>
-      </View>
+      {!pickup ? (
+        <View className="flex-row items-center gap-1">
+          <Ionicons name="star" size={14} color="#f59e0b" />
+          <Text className="text-sm font-semibold text-slate-900">{request.stars}</Text>
+        </View>
+      ) : null}
     </Pressable>
   );
 }
