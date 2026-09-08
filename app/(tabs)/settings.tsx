@@ -71,6 +71,38 @@ export default function SettingsScreen() {
     updatePrefs({ min_stars: n });
   }
 
+  function leaveGroup() {
+    if (isAdmin && memberCount > 1) {
+      Alert.alert(
+        "Transfer admin first",
+        "Hand admin to another member (below) before leaving the group."
+      );
+      return;
+    }
+    const soleAdmin = isAdmin && memberCount <= 1;
+    Alert.alert(
+      soleAdmin ? "Delete this group?" : "Leave this group?",
+      soleAdmin
+        ? "You're the only member, so leaving deletes the group and all of its requests and stars."
+        : "You'll lose access to the group calendar and your open requests will be cancelled. Your stars stay with the group.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: soleAdmin ? "Delete group" : "Leave",
+          style: "destructive",
+          onPress: async () => {
+            const { error } = await supabase.rpc("leave_group");
+            if (error) {
+              Alert.alert("Couldn't leave", errorMessage(error));
+              return;
+            }
+            await refreshProfile();
+          },
+        },
+      ]
+    );
+  }
+
   async function saveCalendarUrl() {
     setSavingUrl(true);
     const { error } = await supabase
@@ -159,6 +191,13 @@ export default function SettingsScreen() {
             {isAdmin ? "you are the admin" : "employee"}
           </Text>
         </View>
+        <Pressable
+          onPress={leaveGroup}
+          className="flex-row items-center justify-between px-4 py-3 active:bg-slate-100"
+        >
+          <Text className="text-base text-slate-900">Leave group</Text>
+          <Ionicons name="exit-outline" size={18} color="#94a3b8" />
+        </Pressable>
         <Pressable
           onPress={() =>
             Alert.alert("Sign out?", undefined, [

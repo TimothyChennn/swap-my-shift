@@ -91,6 +91,18 @@ export default function OnboardingScreen() {
     }
   }
 
+  async function withdraw() {
+    setBusy(true);
+    const { error } = await supabase.rpc("withdraw_join_request");
+    setBusy(false);
+    if (error) {
+      Alert.alert("Couldn't withdraw", errorMessage(error));
+      return;
+    }
+    setLatest(null);
+    setShowSearch(true);
+  }
+
   async function checkAgain() {
     setBusy(true);
     await Promise.all([refreshProfile(), loadLatestRequest()]);
@@ -115,9 +127,10 @@ export default function OnboardingScreen() {
           </View>
           <Button title="Check again" onPress={checkAgain} loading={busy} />
           <Button
-            title="Pick a different group"
+            title="Withdraw and pick a different group"
             variant="secondary"
-            onPress={() => setShowSearch(true)}
+            onPress={withdraw}
+            disabled={busy}
           />
           <Pressable onPress={signOut} className="items-center py-2">
             <Text className="text-slate-500">Sign out</Text>
