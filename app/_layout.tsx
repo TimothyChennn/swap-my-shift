@@ -15,25 +15,28 @@ export default function RootLayout() {
 }
 
 /**
- * Three gated areas: sign-in until there is a session, onboarding until the
- * profile has a group, then the tabs. Expo Router redirects automatically
- * when a guard flips.
+ * Signed out -> welcome. Signed in with no group -> onboarding. In a group ->
+ * tabs (onboarding stays reachable from Settings to join another group).
  */
 function RootStack() {
-  const { session, profile } = useAuth();
+  const { session, memberships } = useAuth();
   const signedIn = !!session;
-  const inGroup = !!profile?.group_id;
+  const hasGroup = memberships.length > 0;
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Protected guard={signedIn && inGroup}>
+      <Stack.Protected guard={signedIn && hasGroup}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen
+          name="contact"
+          options={{ presentation: "modal", headerShown: true, title: "Contact poster" }}
+        />
       </Stack.Protected>
-      <Stack.Protected guard={signedIn && !inGroup}>
+      <Stack.Protected guard={signedIn}>
         <Stack.Screen name="onboarding" />
       </Stack.Protected>
       <Stack.Protected guard={!signedIn}>
-        <Stack.Screen name="sign-in" />
+        <Stack.Screen name="welcome" />
       </Stack.Protected>
     </Stack>
   );

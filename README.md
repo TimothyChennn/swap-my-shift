@@ -1,4 +1,4 @@
-# Swap My Shift
+# Shift Swap
 
 Shift-swapping app for a small healthcare team. Members post shifts they want to drop or pick up, cover each other, and settle up in an internal "stars" currency. Expo (React Native) on the front, Supabase on the back.
 
@@ -57,8 +57,8 @@ Do these in the Supabase dashboard for the project in `.env`.
 
 ### 1. Database
 
-SQL Editor → New query → paste the whole of
-`supabase/migrations/20260907000000_init.sql` → Run.
+SQL Editor → New query → paste each file in `supabase/migrations/` in
+filename order → Run (one query per file).
 
 This creates the tables, Row Level Security policies, the RPC functions the
 app calls (`create_group`, `request_join`, `review_join_request`,

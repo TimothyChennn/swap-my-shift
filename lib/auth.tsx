@@ -10,13 +10,18 @@ import {
 } from "react";
 
 import { supabase } from "./supabase";
-import type { Profile } from "./types";
+import type { Membership, Profile } from "./types";
 
 type AuthState = {
   /** undefined while the stored session is still being read. */
   session: Session | null | undefined;
   profile: Profile | null;
-  refreshProfile: () => Promise<void>;
+  /** Every group the user belongs to, oldest first. */
+  memberships: Membership[];
+  /** The group being viewed: profile.current_group_id, else the first one. */
+  currentGroup: Membership | null;
+  setCurrentGroup: (groupId: string) => Promise<void>;
+  refresh: () => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -25,68 +30,86 @@ const AuthContext = createContext<AuthState | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [profileLoaded, setProfileLoaded] = useState(false);
+  const [memberships, setMemberships] = useState<Membership[]>([]);
+  const [loaded, setLoaded] = useState(false);
 
   const userId = session?.user.id ?? null;
 
-  const refreshProfile = useCallback(async () => {
+  const refresh = useCallback(async () => {
     if (!userId) {
       setProfile(null);
+      setMemberships([]);
       return;
     }
-    const { data } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", userId)
-      .maybeSingle();
-    setProfile((data as Profile | null) ?? null);
+    const [p, m] = await Promise.all([
+      supabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
+      supabase
+        .from("memberships")
+        .select("*, group:groups(id, name, admin_id)")
+        .eq("user_id", userId)
+        .order("created_at"),
+    ]);
+    setProfile((p.data as Profile | null) ?? null);
+    setMemberships((m.data as unknown as Membership[]) ?? []);
   }, [userId]);
 
   // Restore the stored session, then follow auth changes.
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data: subscription } = supabase.auth.onAuthStateChange(
-      (_event, next) => setSession(next)
+    const { data: subscription } = supabase.auth.onAuthStateChange((_event, next) =>
+      setSession(next)
     );
     return () => subscription.subscription.unsubscribe();
   }, []);
 
-  // Load the profile whenever the signed-in user changes, and keep it fresh
-  // so an approved join request moves the user into the app on its own.
+  // Load profile + memberships for the signed-in user and keep them fresh,
+  // so an approved join request moves the user into the group on its own.
   useEffect(() => {
     if (session === undefined) return;
-    setProfileLoaded(false);
-    refreshProfile().finally(() => setProfileLoaded(true));
+    setLoaded(false);
+    refresh().finally(() => setLoaded(true));
     if (!userId) return;
 
     const channel = supabase
-      .channel(`profile:${userId}`)
+      .channel(`me:${userId}`)
       .on(
         "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "profiles",
-          filter: `id=eq.${userId}`,
-        },
-        () => refreshProfile()
+        { event: "UPDATE", schema: "public", table: "profiles", filter: `id=eq.${userId}` },
+        () => refresh()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "memberships", filter: `user_id=eq.${userId}` },
+        () => refresh()
       )
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [session === undefined, userId, refreshProfile]);
+  }, [session === undefined, userId, refresh]);
+
+  const setCurrentGroup = useCallback(
+    async (groupId: string) => {
+      const { error } = await supabase.rpc("set_current_group", { p_group_id: groupId });
+      if (error) throw error;
+      await refresh();
+    },
+    [refresh]
+  );
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
   }, []);
 
-  // Hold the whole tree until we know both the session and the profile;
-  // otherwise the navigator would flash the wrong screen.
-  const ready = session !== undefined && (session === null || profileLoaded);
+  const currentGroup =
+    memberships.find((m) => m.group_id === profile?.current_group_id) ?? memberships[0] ?? null;
+
+  const ready = session !== undefined && (session === null || loaded);
 
   return (
-    <AuthContext.Provider value={{ session, profile, refreshProfile, signOut }}>
+    <AuthContext.Provider
+      value={{ session, profile, memberships, currentGroup, setCurrentGroup, refresh, signOut }}
+    >
       {ready ? children : null}
     </AuthContext.Provider>
   );
@@ -121,15 +144,12 @@ export async function signInWithGoogle(): Promise<boolean> {
   }
 
   if (params.code) {
-    // PKCE flow (supabase-js default).
-    const { error: exchangeError } =
-      await supabase.auth.exchangeCodeForSession(params.code);
+    const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(params.code);
     if (exchangeError) throw exchangeError;
     return true;
   }
 
   if (params.access_token && params.refresh_token) {
-    // Implicit flow, in case the project is configured that way.
     const { error: sessionError } = await supabase.auth.setSession({
       access_token: params.access_token,
       refresh_token: params.refresh_token,
@@ -138,7 +158,9 @@ export async function signInWithGoogle(): Promise<boolean> {
     return true;
   }
 
-  throw new Error("Sign-in finished without a session. Check the redirect URL settings in Supabase.");
+  throw new Error(
+    "Sign-in finished without a session. Check the redirect URL settings in Supabase."
+  );
 }
 
 /** Reads both `?query` and `#fragment` params from a redirect URL. */

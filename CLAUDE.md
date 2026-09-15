@@ -1,6 +1,6 @@
 @AGENTS.md
 
-# Swap My Shift
+# Shift Swap
 
 Mobile app for a healthcare group to trade shifts using an internal "stars"
 currency. Admins run a group, employees join it, and everyone sees a shared
@@ -30,26 +30,31 @@ well-documented libraries.
 - **Employee:** searches for a group by name, requests to join, sees the group
   calendar once approved.
 
-A user belongs to exactly one group in v1.
+A user can belong to several groups (memberships table, one role per
+group). `profiles.current_group_id` is the group they're viewing; the calendar
+header switches it. Stars, Qgenda links and notification prefs are all per
+group and never cross groups.
 
 ## Screens
 
-1. **Sign in / Sign up.** Google button. First-time users pick Admin or Employee.
-   Admin goes to "create a group" flow. Employee goes to group search. Toggle for
-   notifications on/off.
-2. **Home.** Calendar on top, scrollable list below. Days with a pickup request
+1. **Welcome.** "SHIFT SWAP" splash with the pitch, only for signed-out users;
+   anyone with a session lands on the calendar. Log on / sign up = Google.
+   First-time users then create a group or search for one to join.
+2. **Calendar.** Header shows the current group (tap to switch). Green Add
+   button opens the post popup. Calendar on top (peach), scrollable list below
+   with notes and a red "Pick up" button that opens the Contact Poster page
+   (drafts an email; the app never changes anyone's schedule). Days with a pickup request
    show a "+" badge, days with a drop request show a "−" badge. Tapping a day
    opens a sheet showing that day's shifts and any open requests, with a button to
    post a new request (pick up or drop) with a shift type, time, notes, and number
    of stars offered. Posted requests appear in the list below.
 3. **Leaderboard.** Everyone in the group ranked by star balance.
-4. **Stars.** No in-app purchases in v1. Shows the user's balance, recent
-   transactions, and a note: "To buy stars, contact [admin name]." Admin grants
-   stars from the Settings screen.
-5. **Settings.** Notification preferences (on/off, minimum stars to be notified,
-   pickup vs drop). Paste Qgenda calendar link. Admin section (only visible to
-   admins): pending join requests with approve/deny, grant stars to a member,
-   transfer admin.
+4. **Your Stars.** Per group. Activity list plus copy about trading stars and
+   buying more from the star seller in `lib/config.ts`. Admin grants stars from
+   group settings.
+5. **Settings.** Account (name, email, phone, preferred notification channel),
+   list of groups → per-group popup (notifications, supervisor emails, Qgenda
+   link + sync, admin tools when admin, leave group), sign out.
 
 ## Data model
 
@@ -112,8 +117,9 @@ Supabase. Setup steps are in `README.md`. Qgenda import runs in the
 for the current user and optionally by pg_cron for everyone. Not built
 yet: sending notifications (push/email).
 
-Layout: `lib/supabase.ts` (client), `lib/auth.tsx` (session + profile
-provider, Google sign-in), `lib/types.ts` (row types, keep in sync with the
-migration), `app/_layout.tsx` (auth gate via `Stack.Protected`),
-`app/onboarding.tsx` (create / find group), `components/DaySheet.tsx`
-(request actions).
+Layout: `lib/supabase.ts` (client), `lib/auth.tsx` (session, profile,
+memberships, current group, Google sign-in), `lib/types.ts` (row types, keep
+in sync with the migration), `lib/config.ts` (product copy and constants),
+`app/_layout.tsx` (auth gate via `Stack.Protected`), `app/onboarding.tsx`
+(create / find group), `components/AddShiftModal.tsx` and `DayModal.tsx`
+(posting and per-day actions), `components/GroupSettingsModal.tsx`.

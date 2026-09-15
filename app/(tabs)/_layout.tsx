@@ -14,7 +14,8 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Home",
+          title: "Calendar",
+          headerShown: false,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="calendar-outline" color={color} size={size} />
           ),
@@ -32,10 +33,8 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="stars"
         options={{
-          title: "Stars",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="star-outline" color={color} size={size} />
-          ),
+          title: "Your Stars",
+          tabBarIcon: ({ color, size }) => <Ionicons name="star-outline" color={color} size={size} />,
         }}
       />
       <Tabs.Screen

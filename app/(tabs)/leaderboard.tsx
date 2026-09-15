@@ -6,38 +6,42 @@ import { RefreshControl, ScrollView, Text, View } from "react-native";
 import { SectionTitle } from "../../components/ui";
 import { useAuth } from "../../lib/auth";
 import { supabase } from "../../lib/supabase";
-import type { Profile } from "../../lib/types";
+import type { Role } from "../../lib/types";
 
-type Row = Pick<Profile, "id" | "display_name" | "role"> & { balance: number };
+type Row = { id: string; display_name: string; role: Role; balance: number };
+type MemberRow = { user_id: string; role: Role; profile: { display_name: string } | null };
 
-/** Everyone in the group ranked by star balance. */
+/** Everyone in the current group ranked by star balance. */
 export default function LeaderboardScreen() {
-  const { session, profile } = useAuth();
+  const { session, currentGroup } = useAuth();
   const myId = session!.user.id;
+  const group = currentGroup!;
 
   const [rows, setRows] = useState<Row[]>([]);
-  const [groupName, setGroupName] = useState("");
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    const [members, balances, group] = await Promise.all([
-      supabase.from("profiles").select("id, display_name, role").eq("group_id", profile!.group_id!),
-      supabase.from("star_balances").select("user_id, balance"),
-      supabase.from("groups").select("name").eq("id", profile!.group_id!).single(),
+    const [members, balances] = await Promise.all([
+      supabase
+        .from("memberships")
+        .select("user_id, role, profile:profiles(display_name)")
+        .eq("group_id", group.group_id),
+      supabase.from("star_balances").select("user_id, balance").eq("group_id", group.group_id),
     ]);
     const balanceById = new Map<string, number>(
-      ((balances.data ?? []) as { user_id: string; balance: number }[]).map((b) => [
-        b.user_id,
-        b.balance,
-      ])
+      ((balances.data ?? []) as { user_id: string; balance: number }[]).map((b) => [b.user_id, b.balance])
     );
-    const merged = ((members.data ?? []) as Pick<Profile, "id" | "display_name" | "role">[])
-      .map((m) => ({ ...m, balance: balanceById.get(m.id) ?? 0 }))
+    const merged = ((members.data ?? []) as unknown as MemberRow[])
+      .map((m) => ({
+        id: m.user_id,
+        display_name: m.profile?.display_name ?? "Member",
+        role: m.role,
+        balance: balanceById.get(m.user_id) ?? 0,
+      }))
       .sort((a, b) => b.balance - a.balance || a.display_name.localeCompare(b.display_name));
     setRows(merged);
-    setGroupName((group.data as { name: string } | null)?.name ?? "");
     setLoading(false);
-  }, [profile]);
+  }, [group.group_id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -51,7 +55,7 @@ export default function LeaderboardScreen() {
       contentContainerClassName="p-4"
       refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
     >
-      <SectionTitle>{groupName || "Your group"}</SectionTitle>
+      <SectionTitle>{group.group.name}</SectionTitle>
       {rows.map((member, index) => {
         const isMe = member.id === myId;
         return (
@@ -68,9 +72,7 @@ export default function LeaderboardScreen() {
                 {isMe ? " (you)" : ""}
               </Text>
               {member.role === "admin" ? (
-                <Text className="text-xs font-medium uppercase tracking-wide text-indigo-600">
-                  Admin
-                </Text>
+                <Text className="text-xs font-medium uppercase tracking-wide text-indigo-600">Admin</Text>
               ) : null}
             </View>
             <View className="flex-row items-center gap-1">

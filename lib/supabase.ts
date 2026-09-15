@@ -40,20 +40,20 @@ export function errorMessage(error: unknown): string {
 }
 
 /**
- * Imports the current user's shifts from their saved Qgenda link.
- * Resolves with the number imported; throws with a readable message.
+ * Imports the current user's shifts for one group from their saved Qgenda
+ * link. Resolves with the number imported; throws with a readable message.
  */
-export async function syncShifts(): Promise<number> {
+export async function syncShifts(groupId: string): Promise<number> {
   const { data, error } = await supabase.functions.invoke<{
-    results?: { imported?: number; error?: string }[];
+    results?: { group_id: string; imported?: number; error?: string }[];
     error?: string;
-  }>("import-shifts");
+  }>("import-shifts", { body: { group_id: groupId } });
   if (error) {
     // The function body carries the real reason on 4xx responses.
     const body = await (error as { context?: Response }).context?.json().catch(() => null);
     throw new Error(body?.error ?? errorMessage(error));
   }
-  const result = data?.results?.[0];
+  const result = data?.results?.find((r) => r.group_id === groupId) ?? data?.results?.[0];
   if (!result) throw new Error(data?.error ?? "Sync failed");
   if (result.error) throw new Error(result.error);
   return result.imported ?? 0;

@@ -12,7 +12,7 @@ import {
 type ButtonProps = {
   title: string;
   onPress: () => void;
-  variant?: "primary" | "secondary" | "danger";
+  variant?: "primary" | "secondary" | "danger" | "red" | "green";
   loading?: boolean;
   disabled?: boolean;
   icon?: ComponentProps<typeof Ionicons>["name"];
@@ -27,15 +27,20 @@ export function Button({
   icon,
 }: ButtonProps) {
   const inactive = disabled || loading;
+  const onDark = variant === "primary" || variant === "red" || variant === "green";
   const box = {
     primary: "bg-indigo-600 active:bg-indigo-700",
     secondary: "bg-white border border-slate-200 active:bg-slate-50",
     danger: "bg-white border border-rose-200 active:bg-rose-50",
+    red: "bg-red-600 active:bg-red-700",
+    green: "bg-green-600 active:bg-green-700",
   }[variant];
   const text = {
     primary: "text-white",
     secondary: "text-slate-900",
     danger: "text-rose-600",
+    red: "text-white",
+    green: "text-white",
   }[variant];
 
   return (
@@ -47,14 +52,14 @@ export function Button({
       }`}
     >
       {loading ? (
-        <ActivityIndicator color={variant === "primary" ? "#fff" : "#4f46e5"} />
+        <ActivityIndicator color={onDark ? "#fff" : "#4f46e5"} />
       ) : (
         <>
           {icon ? (
             <Ionicons
               name={icon}
               size={20}
-              color={variant === "primary" ? "#fff" : "#0f172a"}
+              color={onDark ? "#fff" : "#0f172a"}
               style={{ marginRight: 10 }}
             />
           ) : null}

@@ -1,16 +1,18 @@
 // Imports shifts from each user's Qgenda calendar subscription (ICS feed)
 // into the shifts table.
 //
-// Called two ways:
-// - By the app with the user's JWT: imports just that user.
-// - By a cron job with the service role key: imports everyone with a link.
+// Links are per membership (a person can be in several groups). Called:
+// - By the app with the user's JWT: imports that user's memberships
+//   (optionally just one, via { group_id } in the body).
+// - By a cron job with the service role key: imports every membership
+//   that has a link.
 
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 
 import { parseIcs } from "./ics.ts";
 
-type Target = { id: string; group_id: string; calendar_url: string };
-type Result = { user_id: string; imported?: number; error?: string };
+type Target = { user_id: string; group_id: string; calendar_url: string };
+type Result = { user_id: string; group_id: string; imported?: number; error?: string };
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -31,23 +33,25 @@ Deno.serve(async (req) => {
 
   if (token && token === serviceKey) {
     const { data, error } = await admin
-      .from("profiles")
-      .select("id, group_id, calendar_url")
-      .not("calendar_url", "is", null)
-      .not("group_id", "is", null);
+      .from("memberships")
+      .select("user_id, group_id, calendar_url")
+      .not("calendar_url", "is", null);
     if (error) return json({ error: error.message }, 500);
     targets = data as Target[];
   } else {
     const { data: userData } = await admin.auth.getUser(token);
     if (!userData.user) return json({ error: "Not signed in" }, 401);
-    const { data } = await admin
-      .from("profiles")
-      .select("id, group_id, calendar_url")
-      .eq("id", userData.user.id)
-      .maybeSingle();
-    if (!data?.calendar_url) return json({ error: "Save your Qgenda link first" }, 400);
-    if (!data.group_id) return json({ error: "Join a group first" }, 400);
-    targets = [data as Target];
+    const body = await req.json().catch(() => ({}));
+    let query = admin
+      .from("memberships")
+      .select("user_id, group_id, calendar_url")
+      .eq("user_id", userData.user.id)
+      .not("calendar_url", "is", null);
+    if (typeof body?.group_id === "string") query = query.eq("group_id", body.group_id);
+    const { data, error } = await query;
+    if (error) return json({ error: error.message }, 500);
+    if (!data || data.length === 0) return json({ error: "Save your Qgenda link first" }, 400);
+    targets = data as Target[];
   }
 
   const results: Result[] = [];
@@ -69,7 +73,7 @@ async function importFor(admin: SupabaseClient, target: Target): Promise<Result>
     const byUid = new Map<string, (typeof events)[number]>();
     for (const event of events) byUid.set(event.uid, event);
     const rows = [...byUid.values()].map((event) => ({
-      user_id: target.id,
+      user_id: target.user_id,
       group_id: target.group_id,
       starts_at: event.start.toISOString(),
       ends_at: event.end.toISOString(),
@@ -81,7 +85,7 @@ async function importFor(admin: SupabaseClient, target: Target): Promise<Result>
     if (rows.length > 0) {
       const { error } = await admin
         .from("shifts")
-        .upsert(rows, { onConflict: "user_id,external_id" });
+        .upsert(rows, { onConflict: "group_id,user_id,external_id" });
       if (error) throw error;
     }
 
@@ -89,7 +93,8 @@ async function importFor(admin: SupabaseClient, target: Target): Promise<Result>
     const { data: existing, error: existingError } = await admin
       .from("shifts")
       .select("id, external_id")
-      .eq("user_id", target.id)
+      .eq("user_id", target.user_id)
+      .eq("group_id", target.group_id)
       .eq("source", "import");
     if (existingError) throw existingError;
     const stale = (existing ?? [])
@@ -101,17 +106,19 @@ async function importFor(admin: SupabaseClient, target: Target): Promise<Result>
     }
 
     await admin
-      .from("profiles")
+      .from("memberships")
       .update({ calendar_synced_at: new Date().toISOString(), calendar_error: null })
-      .eq("id", target.id);
-    return { user_id: target.id, imported: rows.length };
+      .eq("user_id", target.user_id)
+      .eq("group_id", target.group_id);
+    return { user_id: target.user_id, group_id: target.group_id, imported: rows.length };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await admin
-      .from("profiles")
+      .from("memberships")
       .update({ calendar_synced_at: new Date().toISOString(), calendar_error: message })
-      .eq("id", target.id);
-    return { user_id: target.id, error: message };
+      .eq("user_id", target.user_id)
+      .eq("group_id", target.group_id);
+    return { user_id: target.user_id, group_id: target.group_id, error: message };
   }
 }
 

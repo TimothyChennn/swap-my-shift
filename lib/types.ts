@@ -5,6 +5,7 @@ export type Role = "admin" | "employee";
 export type SwapKind = "pickup" | "drop";
 export type SwapStatus = "open" | "accepted" | "cancelled";
 export type JoinStatus = "pending" | "approved" | "denied";
+export type NotifyChannel = "push" | "email" | "both";
 
 export type Profile = {
   id: string;
@@ -12,11 +13,36 @@ export type Profile = {
   email: string | null;
   avatar_url: string | null;
   push_token: string | null;
-  group_id: string | null;
-  role: Role | null;
+  /** The group the user is currently looking at. */
+  current_group_id: string | null;
+  phone: string | null;
+  notify_channel: NotifyChannel;
+};
+
+export type Group = {
+  id: string;
+  name: string;
+  admin_id: string;
+  created_at: string;
+};
+
+export type Membership = {
+  group_id: string;
+  user_id: string;
+  role: Role;
   calendar_url: string | null;
   calendar_synced_at: string | null;
   calendar_error: string | null;
+  created_at: string;
+  group: Pick<Group, "id" | "name" | "admin_id">;
+};
+
+export type JoinRequest = {
+  id: string;
+  group_id: string;
+  user_id: string;
+  status: JoinStatus;
+  created_at: string;
 };
 
 export type Shift = {
@@ -28,21 +54,6 @@ export type Shift = {
   shift_type: string;
   source: "import" | "manual";
   external_id: string | null;
-};
-
-export type Group = {
-  id: string;
-  name: string;
-  admin_id: string;
-  created_at: string;
-};
-
-export type JoinRequest = {
-  id: string;
-  group_id: string;
-  user_id: string;
-  status: JoinStatus;
-  created_at: string;
 };
 
 export type SwapRequest = {
@@ -74,9 +85,10 @@ export type StarTransaction = {
 
 export type NotificationPrefs = {
   user_id: string;
+  group_id: string;
   enabled: boolean;
+  notify_offers: boolean;
   min_stars: number;
-  notify_pickups: boolean;
-  notify_drops: boolean;
-  channel: "push" | "email" | "both";
+  supervisor_emails_enabled: boolean;
+  supervisor_emails: string;
 };
