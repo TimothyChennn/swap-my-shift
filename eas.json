@@ -5,15 +5,17 @@
   },
   "build": {
     "preview": {
-      "distribution": "internal",
-      "channel": "preview",
+      "ios": {
+        "distribution": "store",
+        "autoIncrement": true
+      },
       "android": {
+        "distribution": "internal",
         "buildType": "apk"
       }
     },
     "production": {
-      "autoIncrement": true,
-      "channel": "production"
+      "autoIncrement": true
     }
   },
   "submit": {
@@ -22,6 +24,9 @@
       "android": {
         "track": "internal"
       }
+    },
+    "preview": {
+      "ios": {}
     }
   }
 }
