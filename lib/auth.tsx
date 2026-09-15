@@ -1,4 +1,5 @@
 import type { Session } from "@supabase/supabase-js";
+import Constants, { ExecutionEnvironment } from "expo-constants";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 import {
@@ -125,9 +126,16 @@ export function useAuth(): AuthState {
  * Google sign-in through the system browser. Works in Expo Go and dev builds.
  * Returns false if the user closed the browser without finishing.
  */
+/** Must be on the Supabase redirect allow-list (see README). */
+const APP_REDIRECT = "swapmyshift://auth/callback";
+
 export async function signInWithGoogle(): Promise<boolean> {
-  // exp://.../--/auth/callback in Expo Go, swapmyshift://auth/callback in a build.
-  const redirectTo = Linking.createURL("auth/callback");
+  // Expo Go needs its exp://<ip>:<port>/--/ form; every real build uses the
+  // literal app scheme so there is nothing to compute or get wrong.
+  const redirectTo =
+    Constants.executionEnvironment === ExecutionEnvironment.StoreClient
+      ? Linking.createURL("auth/callback")
+      : APP_REDIRECT;
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
