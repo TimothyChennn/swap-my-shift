@@ -2,6 +2,10 @@
 -- profiles to a memberships table; profiles.current_group_id remembers the
 -- group they're looking at. Qgenda links and notification prefs are per
 -- membership. Existing data is carried across.
+--
+-- Runs as one transaction: if any statement fails, nothing is applied.
+
+begin;
 
 -- ---------------------------------------------------------------------------
 -- Memberships
@@ -489,3 +493,5 @@ $$;
 -- Realtime
 -- ---------------------------------------------------------------------------
 alter publication supabase_realtime add table memberships;
+
+commit;
