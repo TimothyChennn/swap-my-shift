@@ -77,9 +77,17 @@ If you'd rather use the CLI: `supabase link --project-ref <ref>` then
      `https://<project-ref>.supabase.co/auth/v1/callback`
 2. Supabase → Authentication → Providers → Google → enable, paste the client
    ID and secret.
-3. Supabase → Authentication → URL Configuration → Redirect URLs → add:
-   - `exp://**` (Expo Go during development)
-   - `swapmyshift://**` (dev / production builds)
+3. Supabase → Authentication → URL Configuration:
+   - **Site URL:** `swapmyshift://auth/callback`. Supabase sends any redirect
+     it doesn't recognise here, so this makes the store build's sign-in
+     work no matter what.
+   - **Redirect URLs:** `swapmyshift://**` for builds, plus the **exact**
+     Expo Go URL for development, e.g. `exp://192.168.4.88:8081/--/auth/callback`
+     (`npx expo start` prints the IP). Supabase's `**` wildcard does not
+     match numeric hosts, so `exp://**` never matches an IP address; add
+     the exact URL again whenever your Mac's IP changes. Alternatively run
+     `npx expo start --tunnel`: tunnel URLs have a named host, which
+     `exp://**` does match.
 
 The app opens Google in the system browser and comes back through
 `Linking.createURL("auth/callback")`, so the redirect URL changes with your
