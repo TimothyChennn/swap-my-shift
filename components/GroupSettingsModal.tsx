@@ -100,6 +100,12 @@ export function GroupSettingsModal({ membership, onClose }: Props) {
       <GreyRow label="Notifications">
         <Switch value={enabled} onValueChange={(v) => updatePrefs({ enabled: v })} />
       </GreyRow>
+      <View className="rounded-lg bg-amber-50 px-3 py-2">
+        <Text className="text-sm text-amber-800">
+          Not active yet: your choices are saved, but nothing sends notifications in this test
+          version.
+        </Text>
+      </View>
       <View className={`gap-3 ${enabled ? "" : "opacity-40"}`} pointerEvents={enabled ? "auto" : "none"}>
         <View className="flex-row items-center justify-between">
           <View className="flex-1 pr-3">

@@ -64,6 +64,7 @@ export default function SettingsScreen() {
         </Row>
         <View className="gap-2 px-4 py-3">
           <Text className="text-base text-slate-900">Preferred way of being notified</Text>
+          <Text className="text-xs text-amber-700">Not active yet in this test version.</Text>
           <View className="flex-row gap-2">
             {CHANNELS.map((c) => (
               <Chip
